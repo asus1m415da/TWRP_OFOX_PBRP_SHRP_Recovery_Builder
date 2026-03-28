@@ -10,17 +10,17 @@ on:
       DEVICE_TREE_URL:
         description: 'URL del Device Tree (el de tu amigo)'
         required: true
-        default: 'https://github.com/IsaacCodesStuff/android_device_samsung_a06_fox'
+        default: 'https://github.com/asus1m415da/android_device_samsung_a06_fox'
       DEVICE_TREE_BRANCH:
         description: 'Rama del Device Tree'
         required: true
         default: 'fox_12.1'
       DEVICE_PATH:
-        description: 'Ruta del dispositivo (ej: device/samsung/a06)'
+        description: 'Ruta del dispositivo'
         required: true
         default: 'device/samsung/a06'
       DEVICE_NAME:
-        description: 'Codename del dispositivo (ej: a06)'
+        description: 'Codename del dispositivo'
         required: true
         default: 'a06'
       VENDOR_TREE_URL:
@@ -28,7 +28,7 @@ on:
         required: true
         default: 'https://github.com/asus1m415da/android_vendor_samsung_a06'
       VENDOR_PATH:
-        description: 'Ruta del Vendor (ej: vendor/samsung/a06)'
+        description: 'Ruta del Vendor'
         required: true
         default: 'vendor/samsung/a06'
       BUILD_TARGET:
@@ -44,7 +44,7 @@ on:
 jobs:
   build:
     name: Compilando para ${{ github.event.inputs.DEVICE_NAME }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
@@ -86,29 +86,40 @@ jobs:
         cd ${ORANGEFOX_ROOT}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         # Clonar Device Tree
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
-        # Clonar TU Vendor Tree
+        # Clonar TU Vendor Tree (Los 1.1GB de One UI 7)
         git clone ${{ github.event.inputs.VENDOR_TREE_URL }} -b main ./${{ github.event.inputs.VENDOR_PATH }}
 
     - name: Sanitizar Archivos (Matar errores de Windows) 🧼
       run: |
         cd ${ORANGEFOX_ROOT}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
-        # Esto borra finales de línea incorrectos (\r) que causan el "exit code 1"
-        find ${{ github.event.inputs.DEVICE_PATH }} -type f \( -name "*.sh" -o -name "*.mk" \) -exec sed -i 's/\r$//' {} +
-        find ${{ github.event.inputs.VENDOR_PATH }} -type f \( -name "*.sh" -o -name "*.mk" \) -exec sed -i 's/\r$//' {} +
-        chmod +x ${{ github.event.inputs.DEVICE_PATH }}/vendorsetup.sh
+        # Borramos finales de línea incorrectos (\r)
+        find ${{ github.event.inputs.DEVICE_PATH }} -type f \( -name "*.sh" -o -name "*.mk" \) -exec sed -i 's/\r$//' {} + || true
+        find ${{ github.event.inputs.VENDOR_PATH }} -type f \( -name "*.sh" -o -name "*.mk" \) -exec sed -i 's/\r$//' {} + || true
+        chmod +x ${{ github.event.inputs.DEVICE_PATH }}/vendorsetup.sh || true
 
     - name: Iniciar Compilación 🏗️
       run: |
         cd ${ORANGEFOX_ROOT}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        
+        # TRUCO MAESTRO: Apagamos el modo estricto de GitHub antes de cargar el entorno
+        set +e
         source build/envsetup.sh
+        
+        # Volvemos a encenderlo para atrapar errores reales
+        set -e
+        
         export ALLOW_MISSING_DEPENDENCIES=true
         export FOX_USE_TWRP_RECOVERY_IMAGE_BUILDER=1
         export LC_ALL=C
-        # Intentamos con twrp_ o con omni_ por si el nombre interno varía
+        
+        # Intentamos con twrp_ o con omni_
         lunch twrp_${{ github.event.inputs.DEVICE_NAME }}-eng || lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng
+        
+        # ¡A cocinar!
         mka adbd ${{ github.event.inputs.BUILD_TARGET }}image
 
     - name: Verificar y Preparar Entrega 📦
+      if: always()
       run: |
         OUT_DIR=${ORANGEFOX_ROOT}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}
         echo "BUILD_DATE=$(date +%Y%m%d)" >> $GITHUB_ENV
