@@ -1,4 +1,4 @@
-name: OrangeFox Recovery Builder - Samsung A06
+name: OrangeFox Recovery Builder - Samsung A06 PRO
 
 on:
   workflow_dispatch:
@@ -86,8 +86,16 @@ jobs:
         cd ${ORANGEFOX_ROOT}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
         # Clonar Device Tree
         git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
-        # Clonar TU Vendor Tree (¡Clave para el táctil!)
+        # Clonar TU Vendor Tree
         git clone ${{ github.event.inputs.VENDOR_TREE_URL }} -b main ./${{ github.event.inputs.VENDOR_PATH }}
+
+    - name: Sanitizar Archivos (Matar errores de Windows) 🧼
+      run: |
+        cd ${ORANGEFOX_ROOT}/fox_${{ github.event.inputs.MANIFEST_BRANCH }}
+        # Esto borra finales de línea incorrectos (\r) que causan el "exit code 1"
+        find ${{ github.event.inputs.DEVICE_PATH }} -type f \( -name "*.sh" -o -name "*.mk" \) -exec sed -i 's/\r$//' {} +
+        find ${{ github.event.inputs.VENDOR_PATH }} -type f \( -name "*.sh" -o -name "*.mk" \) -exec sed -i 's/\r$//' {} +
+        chmod +x ${{ github.event.inputs.DEVICE_PATH }}/vendorsetup.sh
 
     - name: Iniciar Compilación 🏗️
       run: |
@@ -96,7 +104,8 @@ jobs:
         export ALLOW_MISSING_DEPENDENCIES=true
         export FOX_USE_TWRP_RECOVERY_IMAGE_BUILDER=1
         export LC_ALL=C
-        lunch twrp_${{ github.event.inputs.DEVICE_NAME }}-eng
+        # Intentamos con twrp_ o con omni_ por si el nombre interno varía
+        lunch twrp_${{ github.event.inputs.DEVICE_NAME }}-eng || lunch omni_${{ github.event.inputs.DEVICE_NAME }}-eng
         mka adbd ${{ github.event.inputs.BUILD_TARGET }}image
 
     - name: Verificar y Preparar Entrega 📦
